@@ -5,6 +5,12 @@
 **Tech stack:** Next.js 14 (App Router) · Prisma · PostgreSQL · NextAuth (Google OAuth) · Stripe · Tailwind CSS · MuAPI · Webhook-backed async delivery
 **Use cases:** AI image generators · AI video generators · AI audio tools · Virtual try-on apps · AI writing tools · AI photo editors · Any credit-based generative AI SaaS
 
+## Related Projects
+
+- [MuAPI](https://muapi.ai) — Unified API for image, video, and audio generation across hundreds of AI models. Build on the [white-label studio](https://muapi.ai/white-label) or create [access keys](https://muapi.ai/access-keys) for a self-hosted app.
+- [Open-Generative-AI](https://github.com/Anil-matcha/Open-Generative-AI) — Open-source studio showcasing the same generative-media API capabilities.
+- [muapi-cli](https://github.com/SamurAIGPT/muapi-cli) — CLI and MCP access to MuAPI generation workflows.
+
 ---
 
 ## 🏗️ Technical Architecture
