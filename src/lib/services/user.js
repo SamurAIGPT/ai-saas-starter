@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { validateCreditCost } from "../security.mjs";
 
 export const UserService = {
   async getCredits(userId) {
@@ -9,35 +10,26 @@ export const UserService = {
     return user ? user.credits : 0;
   },
 
-  async addCredits(userId, amount) {
-    if (amount <= 0) return;
-    return await prisma.user.update({
+  async addCredits(userId, amount, client = prisma) {
+    const value = validateCreditCost(amount, 1_000_000);
+    return client.user.update({
       where: { id: userId },
-      data: {
-        credits: {
-          increment: amount,
-        },
-      },
+      data: { credits: { increment: value } },
     });
   },
 
   async deductCredits(userId, amount) {
-    if (amount <= 0) return;
-    
-    // Check if the user has enough credits
-    const currentCredits = await this.getCredits(userId);
-    if (currentCredits < amount) {
+    const cost = validateCreditCost(amount);
+    const result = await prisma.user.updateMany({
+      where: { id: userId, credits: { gte: cost } },
+      data: { credits: { decrement: cost } },
+    });
+    if (result.count !== 1) {
+      const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!userExists) throw new Error("User not found");
       throw new Error("Insufficient credits available");
     }
-
-    return await prisma.user.update({
-      where: { id: userId },
-      data: {
-        credits: {
-          decrement: amount,
-        },
-      },
-    });
+    return this.getCredits(userId);
   },
 };
 
@@ -45,4 +37,3 @@ export const getCredits = UserService.getCredits.bind(UserService);
 export const addCredits = UserService.addCredits.bind(UserService);
 export const deductCredits = UserService.deductCredits.bind(UserService);
 export default UserService;
-

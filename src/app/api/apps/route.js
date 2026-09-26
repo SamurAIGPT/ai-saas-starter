@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/authorization";
 
 export async function POST(req) {
   try {
+    const { response: denied } = await requireAdmin();
+    if (denied) return denied;
     const body = await req.json();
 
     const app = await prisma.app.create({

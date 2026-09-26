@@ -1,7 +1,8 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import PricingCard from "@/components/PricingCard";
@@ -20,6 +21,21 @@ const PLANS = [
 export default function Pricing() {
   const { data: session, status } = useSession();
   const [loadingPlan, setLoadingPlan] = useState(null);
+  const router = useRouter();
+  const captureStarted = useRef(false);
+
+  useEffect(() => {
+    const orderId = new URL(window.location.href).searchParams.get("token");
+    if (!orderId || status !== "authenticated" || captureStarted.current) return;
+    captureStarted.current = true;
+    axios.post("/api/paypal/capture", { orderId })
+      .then(() => toast.success("Payment completed. Your credits will be added shortly."))
+      .catch((error) => {
+        console.error("PayPal capture error:", error);
+        toast.error(error.response?.data?.error || "Unable to complete PayPal payment.");
+      })
+      .finally(() => router.replace("/pricing", { scroll: false }));
+  }, [router, status, session?.user?.id]);
 
   const handleCheckout = async (planId) => {
     if (status !== "authenticated") {

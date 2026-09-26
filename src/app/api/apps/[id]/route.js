@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/authorization";
 
 export async function GET(req, { params }) {
   try {
@@ -7,7 +8,7 @@ export async function GET(req, { params }) {
       include: { category: true },
     });
 
-    if (!app) {
+    if (!app || !app.isPublic) {
       return Response.json({ error: "App not found" }, { status: 404 });
     }
 
@@ -20,6 +21,8 @@ export async function GET(req, { params }) {
 
 export async function PUT(req, { params }) {
   try {
+    const { response: denied } = await requireAdmin();
+    if (denied) return denied;
     const body = await req.json();
 
     const app = await prisma.app.update({
@@ -52,6 +55,8 @@ export async function PUT(req, { params }) {
 
 export async function DELETE(req, { params }) {
   try {
+    const { response: denied } = await requireAdmin();
+    if (denied) return denied;
     await prisma.app.delete({
       where: { id: params.id },
     });

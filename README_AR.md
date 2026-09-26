@@ -68,6 +68,7 @@ DIRECT_URL="postgresql://user:password@localhost:5432/aiforge"
 # المصادقة
 NEXTAUTH_SECRET="your-secret-key-here"
 NEXTAUTH_URL="http://localhost:3000"
+ADMIN_EMAILS="admin@example.com"
 
 # Google OAuth
 GOOGLE_CLIENT_ID="your-google-client-id"
@@ -77,10 +78,16 @@ GOOGLE_CLIENT_SECRET="your-google-client-secret"
 NEXT_PUBLIC_PAYPAL_CLIENT_ID="your-paypal-client-id"
 PAYPAL_CLIENT_SECRET="your-paypal-secret"
 PAYPAL_WEBHOOK_ID="your-paypal-webhook-id"
+PAYPAL_ENV="sandbox"
+PAYPAL_API_BASE="https://api-m.sandbox.paypal.com"
 
 # MuAPI
 MUAPIAPP_API_KEY="your-muapi-key"
+MUAPI_WEBHOOK_SECRET="replace_with_a_long_random_secret"
+DOWNLOAD_ALLOWED_HOSTS="cdn.muapi.ai,cdn.muapi.com,images.unsplash.com"
 ```
+
+بعد تحديث المخطط، راجع تنبيه قاعدة البيانات المشتركة في `README.md` ثم زامن نموذجي `PayPalOrder` و`PaymentEvent` مع قاعدة البيانات قبل استخدام الدفع. تحقق من Webhook PayPal يتطلب تسجيل Webhook ID الصحيح لدى PayPal.
 
 ## 🎯 الصفحات الرئيسية
 

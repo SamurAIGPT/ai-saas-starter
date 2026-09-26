@@ -1,19 +1,39 @@
 import { prisma } from "../prisma";
 import { UserService } from "./user";
 import config from "../config";
+import { buildMuapiUrl, buildMuapiWebhookUrl, resolveMuapiEndpoint, validateCreditCost } from "../security.mjs";
+import { settleCreation } from "./creation-status";
 
 export const AIService = {
   /**
    * Submit a prediction job to MuAPI, deduct credits, and execute inline polling.
    */
   async generate(userId, { prompt, inputImage, aspectRatio, modelEndpoint = "predictions", appId = null, creditCost = null, model = null, customParams = {} }) {
-    const cost = creditCost !== null ? Number(creditCost) : config.ai.generationCost;
-    
-    // 1. Deduct credits
+    if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20_000) {
+      throw new Error("Prompt must be a non-empty string under 20000 characters");
+    }
+    const cost = validateCreditCost(creditCost !== null ? creditCost : config.ai.generationCost);
+    const { isLlm } = resolveMuapiEndpoint({
+      endpoint: modelEndpoint,
+      model: model || (modelEndpoint === "chat/completions" ? "google/gemini-2.5-flash" : "nano-banana-2"),
+      inputImage: Boolean(inputImage),
+    });
+    const apiKey = config.ai.apiKey;
+    const webhookUrl = apiKey ? buildMuapiWebhookUrl(config.auth.webhook_url, config.ai.webhookSecret) : null;
+    const targetUrl = apiKey ? buildMuapiUrl({
+      endpoint: modelEndpoint,
+      model: model || (modelEndpoint === "chat/completions" ? "google/gemini-2.5-flash" : "nano-banana-2"),
+      inputImage: Boolean(inputImage),
+      webhookUrl,
+    }) : null;
+
     await UserService.deductCredits(userId, cost);
 
-    const apiKey = config.ai.apiKey;
     if (!apiKey) {
+      if (process.env.NODE_ENV === "production") {
+        await UserService.addCredits(userId, cost);
+        throw new Error("AI provider is not configured");
+      }
       // Return local mock generation in development if API key is missing
       console.warn("MUAPIAPP_API_KEY is not configured. Running offline simulation.");
       const mockRequestId = `mock_${Math.random().toString(36).substring(2, 9)}`;
@@ -34,19 +54,7 @@ export const AIService = {
       return { id: creation.id, resultImage: creation.resultImage, status: "completed" };
     }
 
-    // 2. Submit to MuAPI
-    const webhookUrl = `${config.auth.webhook_url}/api/webhook/muapi`;
-    const isLlm = modelEndpoint === "any-llm-models" || modelEndpoint.includes("completions");
-    let finalEndpoint = isLlm ? "any-llm-models" : modelEndpoint;
-
-    if (finalEndpoint === "predictions" || !finalEndpoint) {
-      let modelName = model || "nano-banana-2";
-      if (inputImage && (modelName === "nano-banana-2" || modelName === "nano-banana-pro")) {
-        modelName = `${modelName}-edit`;
-      }
-      finalEndpoint = modelName;
-    }
-
+    // 2. Submit to the fixed MUAPI origin; model and endpoint are allow-listed above.
     let bodyPayload = {};
     if (isLlm) {
       let finalPrompt = prompt;
@@ -80,18 +88,20 @@ export const AIService = {
       };
     }
 
-    const targetUrl = finalEndpoint.startsWith("http://") || finalEndpoint.startsWith("https://")
-      ? `${finalEndpoint}?webhook=${encodeURIComponent(webhookUrl)}`
-      : `https://api.muapi.ai/api/v1/${finalEndpoint}?webhook=${encodeURIComponent(webhookUrl)}`;
-
-    const response = await fetch(targetUrl, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(bodyPayload),
-    });
+    let response;
+    try {
+      response = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(bodyPayload),
+      });
+    } catch (error) {
+      await UserService.addCredits(userId, cost);
+      throw error;
+    }
 
     if (!response.ok) {
       // Refund credits on submission error
@@ -157,19 +167,11 @@ export const AIService = {
 
     // 5. Update creation record in database
     if (completed) {
-      creation = await prisma.creation.update({
-        where: { id: creation.id },
-        data: {
-          status,
-          resultImage: status === "completed" ? resultImage : null,
-          error: status === "failed" ? "Polling returned failed status" : null,
-        }
+      creation = await settleCreation(creation.id, {
+        status,
+        resultImage,
+        error: "Polling returned failed status",
       });
-
-      // Refund if failed
-      if (status === "failed") {
-        await UserService.addCredits(userId, cost);
-      }
     }
 
     return { id: creation.id, resultImage: creation.resultImage, status: creation.status };
@@ -200,19 +202,9 @@ export const AIService = {
         if (checkStatus === "completed" || checkStatus === "succeeded") {
           const outputs = result.outputs || [];
           const outputUrl = outputs[0] || result.output;
-          return await prisma.creation.update({
-            where: { id: creationId },
-            data: { status: "completed", resultImage: outputUrl },
-            include: { app: true }
-          });
+          return await settleCreation(creationId, { status: "completed", resultImage: outputUrl, include: { app: true } });
         } else if (checkStatus === "failed") {
-          // Refund credits
-          await UserService.addCredits(creation.userId, creation.creditCost);
-          return await prisma.creation.update({
-            where: { id: creationId },
-            data: { status: "failed", error: result.error || "Generation failed" },
-            include: { app: true }
-          });
+          return await settleCreation(creationId, { status: "failed", error: result.error || "Generation failed", include: { app: true } });
         }
       }
     } catch (e) {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/authorization";
 
 export async function GET(req) {
   try {
@@ -21,6 +22,8 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const { response: denied } = await requireAdmin();
+    if (denied) return denied;
     const body = await req.json();
 
     const category = await prisma.category.create({

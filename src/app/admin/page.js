@@ -22,22 +22,31 @@ export default function AdminDashboard() {
   }, [status, router]);
 
   useEffect(() => {
-    if (status === "authenticated") {
-      fetchApps();
-    }
-  }, [status]);
-
-  const fetchApps = async () => {
-    try {
-      const response = await axios.get("/api/apps");
-      setApps(response.data.data || []);
-    } catch (error) {
-      console.error("Error fetching apps:", error);
-      toast.error("Failed to load apps");
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (status !== "authenticated") return;
+    let active = true;
+    const loadApps = async () => {
+      try {
+        const access = await axios.get("/api/admin/access");
+        if (!access.data?.isAdmin) {
+          router.replace("/dashboard");
+          return;
+        }
+        const response = await axios.get("/api/apps");
+        if (active) setApps(response.data.data || []);
+      } catch (error) {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          router.replace("/dashboard");
+          return;
+        }
+        console.error("Error fetching apps:", error);
+        if (active) toast.error("Failed to load apps");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadApps();
+    return () => { active = false; };
+  }, [status, router]);
 
   const templates = [
     {

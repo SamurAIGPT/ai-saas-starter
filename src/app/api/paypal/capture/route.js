@@ -15,7 +15,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Missing orderId" }, { status: 400 });
     }
 
-    const result = await PayPalService.captureOrder(orderId);
+    const result = await PayPalService.captureOrder(orderId, session.user.id);
     return NextResponse.json(result);
   } catch (error) {
     console.error("PayPal capture error:", error);

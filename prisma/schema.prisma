@@ -145,3 +145,28 @@ model InstalledApp {
   
   @@unique([appId, userId])
 }
+
+model PayPalOrder {
+  id        String   @id
+  userId    String
+  planId    String
+  credits   Int
+  price     String
+  status    String   @default("CREATED")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model PaymentEvent {
+  eventId   String   @id
+  captureId String   @unique
+  orderId   String   @unique
+  eventType String
+  userId    String
+  credits   Int
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

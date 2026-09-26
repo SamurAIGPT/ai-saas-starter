@@ -53,6 +53,7 @@ Create a `.env` file in the root directory (based on `.env.example`):
 * `DIRECT_URL`: Connection URL for database migrations.
 * `NEXTAUTH_SECRET`: Random string for encrypting NextAuth sessions.
 * `NEXTAUTH_URL`: Canonical root URL of the deployment (e.g. `http://localhost:3000`).
+* `ADMIN_EMAILS`: Comma-separated Google account emails allowed to administer the app catalog.
 * `GOOGLE_CLIENT_ID`: OAuth Client ID from Google Cloud Console.
 * `GOOGLE_CLIENT_SECRET`: OAuth Client Secret from Google Cloud Console.
 * `MUAPIAPP_API_KEY`: API Key to connect to the MUAPI services.
@@ -60,6 +61,10 @@ Create a `.env` file in the root directory (based on `.env.example`):
 * `NEXT_PUBLIC_PAYPAL_CLIENT_ID`: PayPal sandbox/production client ID.
 * `PAYPAL_CLIENT_SECRET`: PayPal sandbox/production secret key.
 * `PAYPAL_WEBHOOK_ID`: PayPal webhook ID for payment confirmations.
+* `PAYPAL_ENV`: Set to `sandbox` to use PayPal Sandbox; defaults to `production`.
+* `PAYPAL_API_BASE`: Optional PayPal API endpoint override.
+* `MUAPI_WEBHOOK_SECRET`: Long random secret for authenticating generation callbacks (falls back to `NEXTAUTH_SECRET`).
+* `DOWNLOAD_ALLOWED_HOSTS`: Comma-separated exact HTTPS hosts allowed by the image download proxy.
 
 ---
 
@@ -79,6 +84,7 @@ Create a `.env` file in the root directory (based on `.env.example`):
    npx prisma db pull
    npx prisma generate
    ```
+   The current schema adds `PayPalOrder` and `PaymentEvent`; synchronize these models with the database before using PayPal checkout or webhook idempotency. Review the shared-database warning above and back up the database before schema changes.
 4. Run the development server:
    ```bash
    npm run dev

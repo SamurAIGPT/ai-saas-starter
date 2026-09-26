@@ -1,6 +1,7 @@
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import GoogleProvider from "next-auth/providers/google";
 import { prisma } from "./prisma";
+import { isAdminEmail } from "./admin-role.mjs";
 
 export const authOptions = {
   adapter: PrismaAdapter(prisma),
@@ -15,6 +16,7 @@ export const authOptions = {
       if (session.user) {
         session.user.id = user.id;
         session.user.credits = user.credits;
+        session.user.isAdmin = isAdminEmail(user.email);
       }
       return session;
     },
@@ -26,4 +28,3 @@ export const authOptions = {
 };
 
 export default authOptions;
-

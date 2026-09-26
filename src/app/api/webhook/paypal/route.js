@@ -14,11 +14,11 @@ export async function POST(req) {
     const authAlgo = headersList.get("paypal-auth-algo");
     const transmissionSig = headersList.get("paypal-transmission-sig");
 
-    if (!transmissionId || !transmissionTime) {
+    if (!transmissionId || !transmissionTime || !certUrl || !authAlgo || !transmissionSig) {
       return NextResponse.json({ error: "Missing PayPal headers" }, { status: 400 });
     }
 
-    const result = await PayPalService.handleWebhook(body);
+    const result = await PayPalService.handleWebhook(body, headersList);
     return NextResponse.json(result);
   } catch (error) {
     console.error("PayPal webhook error:", error);
