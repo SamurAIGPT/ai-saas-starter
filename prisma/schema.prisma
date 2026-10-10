@@ -45,6 +45,7 @@ model User {
   sessions      Session[]
   creations     Creation[]
   instances     AppInstance[]
+  nanoPayments  NanoPayment[]
 }
 
 model AppInstance {
@@ -85,4 +86,15 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// One row per Nano (XNO) payment credited, keyed by the payer's send block
+// hash, so a payment can never be credited twice.
+model NanoPayment {
+  sendHash  String   @id
+  credits   Int
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

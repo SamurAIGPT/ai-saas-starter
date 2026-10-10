@@ -57,8 +57,32 @@ Create a `.env` file in the root directory (based on `.env.example`):
 * `STRIPE_SECRET_KEY`: Private key from Stripe dashboard.
 * `STRIPE_WEBHOOK_SECRET`: Signature key to verify Stripe checkout events.
 * `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`: Public Stripe key.
+* `NANO_ACCOUNT`: (optional) the app's Nano (XNO) account users send to for the feeless credit rail.
+* `NANO_RPC_URL`: (optional, default `https://rpc.nano.to`) public RPC node used to verify Nano payments on-chain.
 
 ---
+
+## Optional feeless Nano (XNO) credit-topup rail
+
+Beside Stripe card billing, this template ships an additive, feeless settlement
+rail powered by Nano (XNO) — the open, zero-fee, peer-to-peer digital money. A
+user pays an exact XNO amount from any Nano wallet to the app's account, and the
+app verifies the payment **on-chain** before adding credits to their balance. No
+private key touches the server (the payer's confirmed send block is public
+proof), no network fee, no issuer that can freeze funds.
+
+* `GET /api/nano/quote?plan=starter` — returns the exact amount to pay (the
+  plan price plus a tiny per-user tag in the last raw digits), the account, and
+  a `nano:` payment URI that makes a wallet send exactly that amount.
+* `POST /api/webhook/nano` with `{ planId, blockHash }` (signed in) — verifies
+  that `blockHash` is a confirmed send of exactly the quoted amount to the app's
+  account, then records it and tops up the user's credits in one transaction.
+  Each payment can be claimed once, and only by the user it was quoted for.
+
+`src/lib/nano.js` is fail-closed: an unconfirmed block, a wrong amount, a
+payment to another account or an RPC error never grant credits. The
+`NanoPayment` table (`npx prisma db push` after pulling) records every credited
+payment. Tests live in `test/*.test.mjs` (`npm test`) and are network-free.
 
 ## 🚀 Local Setup & Installation
 
