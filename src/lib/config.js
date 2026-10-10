@@ -20,6 +20,17 @@ const config = {
       business: { id: "business", name: "Business Pack", credits: 2000, price: 5000 },
     }
   },
+  nano: {
+    // Feeless Nano (XNO) credit-topup rail beside Stripe. Credits per XNO amount
+    // (raw = XNO * 10^30). The app's Nano account is where users send XNO.
+    account: process.env.NANO_ACCOUNT || "",
+    rpcUrl: process.env.NANO_RPC_URL || "https://rpc.nano.to",
+    plans: {
+      starter: { id: "starter", name: "Nano Starter", xno: "0.1", credits: 100 },
+      standard: { id: "standard", name: "Nano Standard", xno: "0.5", credits: 250 },
+      pro: { id: "pro", name: "Nano Pro", xno: "1", credits: 600 },
+    },
+  },
   ai: {
     apiKey: process.env.MUAPIAPP_API_KEY,
     generationCost: 1, // Default cost per AI call

@@ -30,3 +30,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local invention-stack ledger (not part of upstream PR)
+/.ledger/
