@@ -1,6 +1,8 @@
 import { prisma } from "../prisma";
 import { UserService } from "./user";
 import config from "../config";
+import { buildMuapiWebhookUrl, createMuapiWebhookToken, hashMuapiWebhookToken } from "./muapi-webhook";
+import { transitionCreationAndMaybeRefund } from "./creation-transition";
 
 export const AIService = {
   /**
@@ -34,8 +36,22 @@ export const AIService = {
       return { id: creation.id, resultImage: creation.resultImage, status: "completed" };
     }
 
-    // 2. Submit to MuAPI
-    const webhookUrl = `${config.auth.webhook_url}/api/webhook/muapi`;
+    // 2. Create the pending row before submitting so even an immediate callback can be authenticated.
+    const webhookToken = createMuapiWebhookToken();
+    const webhookUrl = buildMuapiWebhookUrl(config.auth.webhook_url, webhookToken);
+    let creation = await prisma.creation.create({
+      data: {
+        userId,
+        prompt,
+        inputImage,
+        status: "processing",
+        creditCost: cost,
+        aspectRatio,
+        appId,
+        webhookTokenHash: hashMuapiWebhookToken(webhookToken),
+      }
+    });
+
     const isLlm = modelEndpoint === "any-llm-models" || modelEndpoint.includes("completions");
     let finalEndpoint = isLlm ? "any-llm-models" : modelEndpoint;
 
@@ -94,8 +110,11 @@ export const AIService = {
     });
 
     if (!response.ok) {
+      const removed = await prisma.creation.deleteMany({
+        where: { id: creation.id, status: "processing", requestId: null },
+      });
       // Refund credits on submission error
-      await UserService.addCredits(userId, cost);
+      if (removed.count === 1) await UserService.addCredits(userId, cost);
       const errorText = await response.text();
       throw new Error(`API submission failed: ${response.status} ${errorText}`);
     }
@@ -103,22 +122,13 @@ export const AIService = {
     const responseJson = await response.json();
     const requestId = responseJson.request_id || responseJson.id;
     if (!requestId) {
-      await UserService.addCredits(userId, cost);
       throw new Error("No request_id returned from MUAPI");
     }
 
-    // 3. Save initial record to database
-    let creation = await prisma.creation.create({
-      data: {
-        userId,
-        prompt,
-        inputImage,
-        requestId,
-        status: "processing",
-        creditCost: cost,
-        aspectRatio,
-        appId,
-      }
+    // The callback can beat this response and attach the request ID first.
+    creation = await prisma.creation.update({
+      where: { id: creation.id },
+      data: { requestId }
     });
 
     // 4. Inline Polling Loop (up to 15 seconds)
@@ -157,19 +167,12 @@ export const AIService = {
 
     // 5. Update creation record in database
     if (completed) {
-      creation = await prisma.creation.update({
-        where: { id: creation.id },
-        data: {
-          status,
-          resultImage: status === "completed" ? resultImage : null,
-          error: status === "failed" ? "Polling returned failed status" : null,
-        }
-      });
-
-      // Refund if failed
-      if (status === "failed") {
-        await UserService.addCredits(userId, cost);
-      }
+      await transitionCreationAndMaybeRefund(creation, {
+        status,
+        resultImage: status === "completed" ? resultImage : null,
+        error: status === "failed" ? "Polling returned failed status" : null,
+      }, status === "failed");
+      creation = await prisma.creation.findUnique({ where: { id: creation.id } });
     }
 
     return { id: creation.id, resultImage: creation.resultImage, status: creation.status };
@@ -200,19 +203,11 @@ export const AIService = {
         if (checkStatus === "completed" || checkStatus === "succeeded") {
           const outputs = result.outputs || [];
           const outputUrl = outputs[0] || result.output;
-          return await prisma.creation.update({
-            where: { id: creationId },
-            data: { status: "completed", resultImage: outputUrl },
-            include: { app: true }
-          });
+          await transitionCreationAndMaybeRefund(creation, { status: "completed", resultImage: outputUrl });
+          return await prisma.creation.findUnique({ where: { id: creationId }, include: { app: true } });
         } else if (checkStatus === "failed") {
-          // Refund credits
-          await UserService.addCredits(creation.userId, creation.creditCost);
-          return await prisma.creation.update({
-            where: { id: creationId },
-            data: { status: "failed", error: result.error || "Generation failed" },
-            include: { app: true }
-          });
+          await transitionCreationAndMaybeRefund(creation, { status: "failed", error: result.error || "Generation failed" }, true);
+          return await prisma.creation.findUnique({ where: { id: creationId }, include: { app: true } });
         }
       }
     } catch (e) {

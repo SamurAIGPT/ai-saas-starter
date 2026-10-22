@@ -69,6 +69,7 @@ model Creation {
   creditCost   Int      @default(1)
   status       String   @default("processing")
   requestId    String?  @unique
+  webhookTokenHash String? @unique
   error        String?  @db.Text
   createdAt    DateTime @default(now())
   

@@ -1,62 +1,52 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { UserService } from "@/lib/services/user";
+import { transitionCreationAndMaybeRefund } from "@/lib/services/creation-transition";
+import { hashMuapiWebhookToken, verifyMuapiWebhookToken } from "@/lib/services/muapi-webhook";
 
 export async function POST(req) {
   try {
-    const data = await req.json();
-    const requestId = data.id || data.request_id;
+    const token = new URL(req.url).searchParams.get("token");
+    const tokenHash = hashMuapiWebhookToken(token);
+    if (!tokenHash) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!requestId) {
+    const data = await req.json();
+    const requestIdValue = data.id || data.request_id;
+    if (typeof requestIdValue !== "string" || !requestIdValue.trim()) {
       return NextResponse.json({ error: "Missing prediction identifier" }, { status: 400 });
     }
+    const requestId = requestIdValue.trim();
 
-    const creation = await prisma.creation.findFirst({
-      where: { requestId },
-    });
-
-    if (!creation) {
-      return NextResponse.json({ error: "Creation record not found" }, { status: 404 });
+    const creation = await prisma.creation.findUnique({ where: { webhookTokenHash: tokenHash } });
+    if (!creation || !verifyMuapiWebhookToken(token, creation.webhookTokenHash)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    // Skip processing if already finished
-    if (creation.status === "completed" || creation.status === "failed") {
+    if (creation.requestId && creation.requestId !== requestId) {
+      return NextResponse.json({ error: "Request id does not match this webhook token" }, { status: 409 });
+    }
+    if (creation.status !== "processing") {
       return NextResponse.json({ success: true, message: "Already processed" });
     }
 
-    if (data.error || data.status === "failed") {
-      const errorMsg = data.error || "Async prediction failed";
-      
-      // Update record to failed
-      await prisma.creation.update({
-        where: { id: creation.id },
-        data: { status: "failed", error: errorMsg },
-      });
-
-      // Refund user credits
-      await UserService.addCredits(creation.userId, creation.creditCost);
-      
-      return NextResponse.json({ success: true, status: "failed_refunded" });
-    } else {
-      const outputs = data.outputs || [];
-      const imageUrl = outputs[0] || data.output;
-
-      if (!imageUrl) {
-        return NextResponse.json({ error: "No output URL provided" }, { status: 400 });
-      }
-
-      await prisma.creation.update({
-        where: { id: creation.id },
-        data: {
-          status: "completed",
-          resultImage: imageUrl,
-        },
-      });
-
-      return NextResponse.json({ success: true, status: "completed" });
+    const failed = Boolean(data.error) || data.status === "failed";
+    if (failed) {
+      const errorMessage = typeof data.error === "string" ? data.error : (data.error ? JSON.stringify(data.error) : "Async prediction failed");
+      const transitioned = await transitionCreationAndMaybeRefund(creation, { requestId, status: "failed", error: errorMessage }, true);
+      return NextResponse.json({ success: true, status: transitioned ? "failed_refunded" : "Already processed" });
     }
+
+    const outputs = Array.isArray(data.outputs) ? data.outputs : [];
+    const imageUrl = outputs[0] || data.output;
+    if (!imageUrl) return NextResponse.json({ error: "No output URL provided" }, { status: 400 });
+
+    const transitioned = await transitionCreationAndMaybeRefund(creation, {
+      requestId,
+      status: "completed",
+      resultImage: imageUrl,
+      error: null,
+    });
+    return NextResponse.json({ success: true, status: transitioned ? "completed" : "Already processed" });
   } catch (error) {
     console.error("MUAPI webhook processing error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

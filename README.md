@@ -60,6 +60,10 @@ Create a `.env` file in the root directory (based on `.env.example`):
 
 ---
 
+### Existing deployments
+
+Before deploying this update, run `npx prisma db push` to add the nullable `Creation.webhookTokenHash` column. Callbacks for jobs submitted before the update do not have per-job tokens and will be rejected; allow those jobs to finish before deploying, or submit them again afterward.
+
 ## 🚀 Local Setup & Installation
 
 1. Install dependencies:
